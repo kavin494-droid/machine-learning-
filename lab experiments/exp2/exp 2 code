@@ -1,0 +1,98 @@
+import csv
+import os
+
+SAMPLE_DATA = (
+    "Sky,AirTemp,Humidity,Wind,Water,Forecast,EnjoySport\n"
+    "Sunny,Warm,Normal,Strong,Warm,Same,Yes\n"
+    "Sunny,Warm,High,Strong,Warm,Same,Yes\n"
+    "Rainy,Cold,High,Strong,Warm,Change,No\n"
+    "Sunny,Warm,High,Strong,Cool,Change,Yes\n"
+)
+
+
+def load_csv(path):
+    with open(path, newline="") as f:
+        rows = [r for r in csv.reader(f) if r]
+    header, data = rows[0], rows[1:]
+    X = [[v.strip() for v in r[:-1]] for r in data]
+    y = [r[-1].strip().lower() in ("yes", "true", "1", "y") for r in data]
+    return header[:-1], X, y
+
+
+def covers(h, x):
+    return all(hi == "?" or hi == xi for hi, xi in zip(h, x))
+
+
+def more_general_or_equal(h1, h2):
+    return all(a == "?" or a == b or b == "0" for a, b in zip(h1, h2))
+
+
+def candidate_elimination(X, y):
+    n = len(X[0])
+    domains = [sorted({x[i] for x in X}) for i in range(n)]
+    S = ["0"] * n
+    G = [["?"] * n]
+    trace = []
+
+    for t, (x, positive) in enumerate(zip(X, y), 1):
+        if positive:
+            G = [g for g in G if covers(g, x)]
+            for i in range(n):
+                if S[i] == "0":
+                    S[i] = x[i]
+                elif S[i] != x[i]:
+                    S[i] = "?"
+        else:
+            newG = []
+            for g in G:
+                if not covers(g, x):
+                    newG.append(g)
+                    continue
+                for i in range(n):
+                    if g[i] == "?":
+                        for v in domains[i]:
+                            if v != x[i]:
+                                h = g[:]
+                                h[i] = v
+                                if more_general_or_equal(h, S):
+                                    newG.append(h)
+            G = []
+            for h in newG:
+                if h in G:
+                    continue
+                if any(o != h and more_general_or_equal(o, h) for o in newG):
+                    continue
+                G.append(h)
+        trace.append((t, x, positive, S[:], [g[:] for g in G]))
+    return S, G, trace
+
+
+def main():
+    try:
+        base = os.path.dirname(os.path.abspath(__file__))
+    except NameError:
+        base = os.getcwd()
+    path = os.path.join(base, "enjoysport.csv")
+
+    if not os.path.exists(path):
+        print("enjoysport.csv not found; creating sample file at:", path, "\n")
+        with open(path, "w", newline="") as f:
+            f.write(SAMPLE_DATA)
+
+    attrs, X, y = load_csv(path)
+    print("Attributes:", attrs)
+    print("Loaded", len(X), "training examples from", path, "\n")
+
+    S, G, trace = candidate_elimination(X, y)
+
+    for t, x, pos, s, g in trace:
+        print("Instance", t, ":", x, "->", "Positive" if pos else "Negative")
+        print("  S =", s)
+        print("  G =", g, "\n")
+
+    print("=" * 60)
+    print("Final Specific boundary S:", S)
+    print("Final General boundary G :", G)
+
+
+main()
